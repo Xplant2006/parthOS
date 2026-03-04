@@ -25,21 +25,12 @@ if(functionNum==3)  then
     functionNum=8;
     currentPID=[SYSTEM_STATUS_TABLE+1];
     call MOD_0;
-    multipop(R1,R2,R3); 
+    multipop(R1,R2,R3);
     print word;
     multipush(R1,R2,R3);
     functionNum=9;
     currentPID=[SYSTEM_STATUS_TABLE+1];
-    //call MOD_0;
-    [TERMINAL_STATUS_TABLE]=0;
-    alias i R3;
-    i=0;
-    while(i<16) do
-        if([PROCESS_TABLE+i*16+4]==WAIT_TERMINAL)   then
-            [PROCESS_TABLE+i*16+4]=READY;
-        endif;
-        i=i+1;
-    endwhile;
+    call MOD_0;
     alias return_value R4;
     return_value=R0;
     multipop(R1,R2,R3);
