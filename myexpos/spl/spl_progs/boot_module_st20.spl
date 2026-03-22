@@ -1,6 +1,8 @@
 //INODE TABLE
 loadi(59,3);
 loadi(60,4);
+//Disk Free List
+loadi(61,2);
 //INT 9
 loadi(20,33);
 loadi(21,34);
@@ -43,6 +45,14 @@ loadi(15,28);
 //Console Interrupt
 loadi(8,21);
 loadi(9,22);
+//Disk Interrupt
+loadi(6,19);
+loadi(7,20);
+//Fork Interrupt
+loadi(18,31);
+loadi(19,32);
+//Load Program
+//loadi(83,69);
 
 
 [TERMINAL_STATUS_TABLE]=0;
@@ -93,6 +103,7 @@ while(i<16) do
     i=i+1;
 endwhile;
 
+//Initializing Memory Free List
 i=0;
 while(i<=82)do
 	[MEMORY_FREE_LIST+i]=1;
@@ -106,5 +117,25 @@ endwhile;
 [TERMINAL_STATUS_TABLE + 0] = 0;
 [SYSTEM_STATUS_TABLE + 2] = 45;
 [SYSTEM_STATUS_TABLE + 3] = 0;
+
+[DISK_STATUS_TABLE+0]=0;
+
+//Initializing Per-Process Resource Table of Init
+i = 1;
+while (i < 9) do
+    [([PROCESS_TABLE + 16 + 11] + 1) * 512 - 2 * i] = -1;
+    i = i + 1;
+endwhile;
+
+//Initializing Disk Map Table for Init
+[DISK_MAP_TABLE + 10*1 + 2] = -1;
+[DISK_MAP_TABLE + 10*1 + 3] = -1;
+[DISK_MAP_TABLE + 10*1 + 4] = 7;
+[DISK_MAP_TABLE + 10*1 + 5] = 8;
+[DISK_MAP_TABLE + 10*1 + 6] = -1;
+[DISK_MAP_TABLE + 10*1 + 7] = -1;
+[DISK_MAP_TABLE + 10*1 + 8] = -1;
+[DISK_MAP_TABLE + 10*1 + 9] = -1;
+
 
 return;

@@ -1,0 +1,124 @@
+// INT 9 - Fork+Exec: parent continues, child runs new program
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=9;
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512-1;
+alias userSP R0;
+userSP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13];
+alias fileName R4;
+fileName=[[PAGE_TABLE_BASE+20*[SYSTEM_STATUS_TABLE+1]+2*((userSP-4)/512)]*512+(userSP-4)%512];
+alias i R5;
+i=0;
+while(i<MAX_FILE_NUM) do
+    if([INODE_TABLE+i*16+1]==fileName&&[INODE_TABLE+i*16]==EXEC) then
+        break;
+    endif;
+    i=i+1;
+endwhile;
+if(i==MAX_FILE_NUM) then
+    [[PAGE_TABLE_BASE+20*[SYSTEM_STATUS_TABLE+1]+2*((userSP-1)/512)]*512+(userSP-1)%512]=-1;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+    SP=userSP;
+    ireturn;
+endif;
+alias childPID R7;
+multipush(R0,R1,R2,R3,R4,R5,R6);
+R1=1;
+call MOD_1;
+childPID=R0;
+multipop(R0,R1,R2,R3,R4,R5,R6);
+if(childPID==-1) then
+    [[PAGE_TABLE_BASE+20*[SYSTEM_STATUS_TABLE+1]+2*((userSP-1)/512)]*512+(userSP-1)%512]=-1;
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+    SP=userSP;
+    ireturn;
+endif;
+// Allocate user area page
+multipush(R0,R1,R2,R3,R4,R5,R6,R7);
+R1=1;
+call MOD_2;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16]=R0;
+multipop(R0,R1,R2,R3,R4,R5,R6,R7);
+[PROCESS_TABLE+childPID*16+11]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16];
+// Allocate stack page 1
+multipush(R0,R1,R2,R3,R4,R5,R6,R7);
+R1=1;
+call MOD_2;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16]=R0;
+multipop(R0,R1,R2,R3,R4,R5,R6,R7);
+[PAGE_TABLE_BASE+20*childPID+16]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16];
+[PAGE_TABLE_BASE+20*childPID+17]="0110";
+// Allocate stack page 2
+multipush(R0,R1,R2,R3,R4,R5,R6,R7);
+R1=1;
+call MOD_2;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16]=R0;
+multipop(R0,R1,R2,R3,R4,R5,R6,R7);
+[PAGE_TABLE_BASE+20*childPID+18]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16];
+[PAGE_TABLE_BASE+20*childPID+19]="0110";
+// Child process table
+[PROCESS_TABLE+childPID*16+3]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+3];
+[PROCESS_TABLE+childPID*16+6]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+6];
+[PROCESS_TABLE+childPID*16+10]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+10];
+[PROCESS_TABLE+childPID*16+7]=i;
+[PROCESS_TABLE+childPID*16+13]=8*512;
+[PROCESS_TABLE+childPID*16+9]=0;
+[PROCESS_TABLE+childPID*16+12]=0;
+[PROCESS_TABLE+childPID*16+0]=0;
+[PROCESS_TABLE+childPID*16+2]=[SYSTEM_STATUS_TABLE+1];
+[PROCESS_TABLE+childPID*16+4]=ALLOCATED;
+[PROCESS_TABLE+childPID*16+1]=childPID;
+// Child page table: lib, heap
+[PAGE_TABLE_BASE+20*childPID+0]=63;
+[PAGE_TABLE_BASE+20*childPID+1]="0100";
+[PAGE_TABLE_BASE+20*childPID+2]=64;
+[PAGE_TABLE_BASE+20*childPID+3]="0100";
+[PAGE_TABLE_BASE+20*childPID+4]=-1;
+[PAGE_TABLE_BASE+20*childPID+5]="0000";
+[PAGE_TABLE_BASE+20*childPID+6]=-1;
+[PAGE_TABLE_BASE+20*childPID+7]="0000";
+// Get code page
+multipush(R0,R1,R2,R3,R4,R5,R6,R7);
+R1=5;
+R2=[INODE_TABLE+i*16+8];
+call MOD_2;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16]=R0;
+multipop(R0,R1,R2,R3,R4,R5,R6,R7);
+[PAGE_TABLE_BASE+20*childPID+8]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16];
+[PAGE_TABLE_BASE+20*childPID+9]="0100";
+[PAGE_TABLE_BASE+20*childPID+10]=-1;
+[PAGE_TABLE_BASE+20*childPID+11]="0000";
+[PAGE_TABLE_BASE+20*childPID+12]=-1;
+[PAGE_TABLE_BASE+20*childPID+13]="0000";
+[PAGE_TABLE_BASE+20*childPID+14]=-1;
+[PAGE_TABLE_BASE+20*childPID+15]="0000";
+// Entry point on child stack
+[[PAGE_TABLE_BASE+20*childPID+16]*512]=[[PAGE_TABLE_BASE+20*childPID+8]*512+1];
+// BP on child kernel stack
+[[PROCESS_TABLE+childPID*16+11]*512]=BP;
+// Disk map table
+alias numblocks R8;
+numblocks=(([INODE_TABLE+i*16+2]-1)/512)+1;
+alias j R9;
+j=0;
+while(j<10) do
+    if(j>=4&&j<8&&j-4<numblocks) then
+        [DISK_MAP_TABLE+childPID*10+j]=[INODE_TABLE+i*16+8+(j-4)];
+    else
+        [DISK_MAP_TABLE+childPID*10+j]=-1;
+    endif;
+    j=j+1;
+endwhile;
+// Per-process resource table
+j=1;
+while(j<9) do
+    [([PROCESS_TABLE+childPID*16+11]+1)*512-2*j]=-1;
+    j=j+1;
+endwhile;
+// Mark child CREATED now that setup is complete
+[PROCESS_TABLE+childPID*16+4]=CREATED;
+// Return 0 to parent
+[[PAGE_TABLE_BASE+20*[SYSTEM_STATUS_TABLE+1]+2*((userSP-1)/512)]*512+(userSP-1)%512]=0;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16]=0;
+SP=userSP;
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+ireturn;
