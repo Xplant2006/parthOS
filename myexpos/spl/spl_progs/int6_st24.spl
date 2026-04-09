@@ -1,0 +1,114 @@
+alias currentPID R1;
+currentPID=[SYSTEM_STATUS_TABLE+1];
+
+// Setting MODE FLAG
+[PROCESS_TABLE+currentPID*16+9]=7;
+
+alias userSP R0;
+userSP=SP;
+
+// Storing SP in UPTR and changing to kernel stack
+[PROCESS_TABLE+currentPID*16+13]=userSP;
+SP=[PROCESS_TABLE+currentPID*16+11]*512-1;
+
+alias returnAddr R1;
+returnAddr = [PTBR+2*((userSP-1)/512)]*512+(userSP-1)%512;
+alias fileDescriptor R2;
+
+fileDescriptor=[[PTBR + 2*(userSP-4)/512]*512 + (userSP-4)%512];
+
+if(fileDescriptor!=-1)  then
+    if(fileDescriptor<0||fileDescriptor>7)  then
+        [returnAddr]=-1;
+    else
+        alias resourceTableEntry R3;
+        resourceTableEntry=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512+RESOURCE_TABLE_OFFSET+fileDescriptor*2;
+
+        if([resourceTableEntry+0]!=FILE)    then
+            [returnAddr]=-1;
+        else
+            // DEBUG: Entering file read path
+            breakpoint;
+            alias openFileTableEntry R4;
+            openFileTableEntry=[resourceTableEntry+1];
+            alias inodeIndex R5;
+            inodeIndex=[OPEN_FILE_TABLE+openFileTableEntry*4+0];
+
+            multipush(R0,R1,R2,R3,R4,R5);
+            R1=4;
+            R2=inodeIndex;
+            R3=[SYSTEM_STATUS_TABLE+1];
+            call RESOURCE_MANAGER;
+            R9=R0;
+            multipop(R0,R1,R2,R3,R4,R5);
+
+            // DEBUG: After Acquire Inode. R9=retval, R5=inodeIndex, R4=openFileTableEntry
+            breakpoint;
+
+            if(R9==-1)  then
+                [returnAddr]=-1;
+            else
+                alias lseek R6;
+                lseek=OPEN_FILE_TABLE+openFileTableEntry*4+2;
+
+                alias wordAddr R7;
+                wordAddr=[[PTBR+2*((userSP-3)/512)]*512+(userSP-3)%512];
+                wordAddr=[PTBR+2*(wordAddr/512)]*512+(wordAddr)%512;
+
+                if(inodeIndex==INODE_ROOT)  then
+                    if([lseek]==480)  then
+                        [returnAddr]=-2;
+                    else
+                        [wordAddr]=[ROOT_FILE+[lseek]];
+                        [lseek]=[lseek]+1;
+                        [returnAddr]=0;
+                    endif;
+                else
+                    breakpoint; // DEBUG: Before EOF check. R5=inodeIndex, R6=lseek addr
+                    if([lseek]==[INODE_TABLE+inodeIndex*16+2])  then
+                        breakpoint; // DEBUG: EOF reached
+                        [returnAddr]=-2;
+                    else
+                        alias diskBlock R8;
+                        alias offset R9;
+                        diskBlock=[INODE_TABLE+inodeIndex*16+8+([lseek]/512)];
+                        offset=[lseek]%512;
+
+                        multipush(R0,R1,R2,R3,R4,R5,R6,R7,R8,R9);
+                        R1=2;
+                        R2=diskBlock;
+                        R3=offset;
+                        R4=wordAddr;
+                        call FILE_MANAGER;
+                        breakpoint; // DEBUG: After Buffered Read
+                        multipop(R0,R1,R2,R3,R4,R5,R6,R7,R8,R9);
+                        [lseek]=[lseek]+1;
+                        [returnAddr]=0;
+                    endif;
+                endif;
+                multipush(R0,R1,R2,R3,R4,R5,R6,R7,R8,R9);
+                R1=5;
+                R2=inodeIndex;
+                R3=[SYSTEM_STATUS_TABLE+1];
+                call RESOURCE_MANAGER;
+                multipop(R0,R1,R2,R3,R4,R5,R6,R7,R8,R9);
+            endif;
+        endif;
+    endif;
+else
+    alias wordaddr R5;
+    wordaddr=[[PTBR + 2*(userSP-3)/512]*512 + (userSP-3)%512];
+    multipush(R0,R1,R2,R3,R4,R5);
+    R1=4;
+    R2=[SYSTEM_STATUS_TABLE+1];
+    R3=R5;
+    call MOD_4;
+    multipop(R0,R1,R2,R3,R4,R5);
+    [returnAddr] =  0;
+
+endif;
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+SP=userSP;
+ireturn;
+

@@ -1,0 +1,51 @@
+alias userSP R1;
+userSP=SP;
+
+alias currPID R2;
+currPID=[SYSTEM_STATUS_TABLE+1];
+
+alias process_entry R3;
+process_entry=PROCESS_TABLE+currPID*16;
+
+[process_entry+13]=SP;
+SP=[process_entry+11]*512-1;
+
+[process_entry+9]=21;
+
+if(currPID!=1 || [process_entry+3]!=1)  then
+    SP=userSP;
+    [process_entry+9]=0;
+    [[PTBR + 2*(userSP-1)/512]*512 + (userSP-1)%512] = -1;
+	ireturn;
+endif;
+
+//STORE inode table from mem to DISK
+
+R1=1;
+R2=currPID;
+R3=59;
+R4=3;
+call MOD_4;
+
+//STORE user table from mem to DISK
+R1=1;
+R2=[SYSTEM_STATUS_TABLE+1];
+R3=60;
+R4=4;
+call MOD_4;
+
+//STORE root file from mem to DISK
+R1=1;
+R2=[SYSTEM_STATUS_TABLE+1];
+R3=62;
+R4=5;
+call MOD_4;
+
+//Store disk free list from me to DISK
+R1=1;
+R2=[SYSTEM_STATUS_TABLE+1];
+R3=62;
+R4=2;
+call MOD_4;
+
+halt;

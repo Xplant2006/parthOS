@@ -1,0 +1,123 @@
+alias FuncNum R1;
+alias currentPID R2;
+
+//Get PCB entry
+if(FuncNum==1)  then
+    alias retval R0;
+    retval=0;
+    while([PROCESS_TABLE+retval*16+4]!=TERMINATED&&retval<16)  do
+        retval=retval+1;
+    endwhile;
+    if(retval>15)   then
+        retval=-1;
+        return;
+    endif;
+    [PROCESS_TABLE+retval*16+1]=retval;
+    [PROCESS_TABLE+retval*16+4]=ALLOCATED;
+    [PROCESS_TABLE+retval*16+14]=PAGE_TABLE_BASE+20*retval;
+    [PROCESS_TABLE+retval*16+15]=10;
+    return;
+endif;
+
+//Free User Area Page
+if(FuncNum==2)  then
+    alias userpage R3;
+    userpage=[PROCESS_TABLE+currentPID*16+11];
+    multipush(R1,R2,R3);
+    R1=2;
+    R2=userpage;
+    call MOD_2;
+    multipop(R1,R2,R3);
+    alias resource_table R4;
+    resource_table=([PROCESS_TABLE+currentPID*16+11]*512+RESOURCE_TABLE_OFFSET);
+    alias i R5;
+    i=0;
+    while(i<16) do
+        if([resource_table+2*i]==SEMAPHORE) then
+            multipush(R1,R2,R3,R4,R5);
+            R1=7;
+            R2=[resource_table+2*i+1];
+            R3=currentPID;
+            call MOD_0;
+            multipop(R1,R2,R3,R4,R5);
+        else
+            if([resource_table+2*i]==FILE)  then
+                multipush(R1,R2,R3,R4,R5);
+                R1=4;
+                R2=[resource_table+2*i+1];
+                call FILE_MANAGER;
+                multipop(R1,R2,R3,R4,R5);
+            endif;
+        endif;
+        i=i+1;
+    endwhile;
+    return;
+endif;
+
+//Exit Process
+if(FuncNum==3)  then
+    multipush(R1,R2);
+    R1=4;
+    R2=currentPID;
+    call MOD_1;
+    R1=2;
+    R2=currentPID;
+    call MOD_1;
+    multipop(R1,R2);
+    [PROCESS_TABLE+currentPID*16+4]=TERMINATED;
+    if([PROCESS_TABLE+currentPID*16+9]!=9)  then
+        alias i R3;
+        i=1;
+        while(i<16) do
+            if([PROCESS_TABLE+i*16+4]==WAIT_PROCESS && [PROCESS_TABLE+i*16+5]==currentPID)    then
+                [PROCESS_TABLE+i*16+4]=READY;
+                [PROCESS_TABLE+i*16+5]=0;
+            endif;
+            if([PROCESS_TABLE+i*16+2]==currentPID)  then
+                [PROCESS_TABLE+i*16+2]=-1;
+            endif;
+            i=i+1;
+        endwhile;
+    endif;
+    return;
+endif;
+
+//Free Page Table
+if(FuncNum==4)  then
+    alias page_table_entry R3;
+    page_table_entry=PAGE_TABLE_BASE+currentPID*20;
+    [page_table_entry+0]=-1;
+    [page_table_entry+1]="0000";
+    [page_table_entry+2]=-1;
+    [page_table_entry+3]="0000";
+    alias i R4;
+    i=4;
+    while(i<20  ) do
+        if([page_table_entry+i]!=-1)    then
+            multipush(R1,R2,R3,R4);
+            R1=2;
+            R2=[page_table_entry+i];
+            call MOD_2;
+            multipop(R1,R2,R3,R4);
+            [page_table_entry+i]=-1;
+            [page_table_entry+i+1]="0000";
+        endif;
+        i=i+2;
+    endwhile;
+    i=2;
+    while(i<10) do
+        if([DISK_MAP_TABLE+currentPID*10+i]!=-1)    then
+            if(i<4||i>7)    then
+                multipush(R1,R2,R3,R4);
+                R1=4;
+                R3=currentPID;
+                R2=[DISK_MAP_TABLE+currentPID*10+i];
+                call MOD_2;
+                multipop(R1,R2,R3,R4);
+            endif;
+            [DISK_MAP_TABLE+currentPID*10+i]=-1;
+        endif;
+        i=i+1;
+    endwhile;
+    return;
+endif;

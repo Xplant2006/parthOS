@@ -1,0 +1,87 @@
+//INT 5 Open and Close System Calls
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP;
+
+alias userSP R0;
+userSP=SP;
+
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512-1;
+
+alias syscall R1;
+syscall=[[PTBR+2*((userSP-5)/512)]*512+(userSP-5)%512];
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=syscall;
+
+alias retAddr R2;
+
+retAddr=[PTBR+2*((userSP-1)/512)]*512+(userSP-1)%512;
+
+//Open System Call
+
+if(syscall==2)  then
+    alias i R3;
+    i=0;
+    alias res_table R4;
+    res_table=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512+RESOURCE_TABLE_OFFSET;
+    while (i<8) do
+        if([res_table+i*2+0]==-1)   then
+            break;
+        endif;
+        i=i+1;
+    endwhile;
+    if(i==8)    then
+        [retAddr]=-3;
+    else
+        alias filename R5;
+        filename=[[PTBR+2*((userSP-4)/512)]*512+(userSP-4)%512];
+        alias fileTableEntry R6;
+        
+        multipush(R0,R1,R2,R3,R4,R5);
+        R1=3;
+        R2=filename;
+        call FILE_MANAGER;
+        fileTableEntry = R0;
+        multipop(R0,R1,R2,R3,R4,R5);
+        if(fileTableEntry<0)    then
+            [retAddr]=fileTableEntry;
+        else
+            [res_table+i*2+0]=FILE;
+            [res_table+i*2+1]=fileTableEntry;
+            [retAddr]=i;
+        endif;
+    endif;
+endif;
+
+//Close System Call
+
+if(syscall==3)  then
+    alias fileDescriptor R3;
+    fileDescriptor=[[PTBR+2*((userSP-4)/512)]*512+(userSP-4)%512];
+
+    if(fileDescriptor<0||fileDescriptor>7)  then
+        [retAddr]=-1;
+    else
+        alias res_table_entry R4;
+        res_table_entry=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512+RESOURCE_TABLE_OFFSET+fileDescriptor*2;
+        if([res_table_entry]!=FILE) then
+            [retAddr]=-1;
+        else
+            alias openFileTableEntry R5;
+            openFileTableEntry=[res_table_entry+1];
+
+            multipush(R0,R1,R2,R3,R4,R5);
+            R1=4;
+            R2=openFileTableEntry;
+            call FILE_MANAGER;
+            multipop(R1,R2,R3,R4,R5);
+
+            [res_table_entry]=-1;
+            [retAddr]=0;
+        endif;
+    endif;
+endif;
+
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13];
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+
+ireturn;

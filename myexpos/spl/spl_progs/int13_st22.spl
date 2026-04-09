@@ -1,0 +1,82 @@
+alias userSP R1;
+userSP=SP;
+
+alias currPID R2;
+currPID=[SYSTEM_STATUS_TABLE+1];
+
+alias process_entry R3;
+process_entry=PROCESS_TABLE+currPID*16;
+
+alias syscall R4;
+syscall=[[PTBR+2*(userSP-5)/512]*512+(userSP-5)%512];
+
+[process_entry+13]=userSP;
+SP=[process_entry+11]*512-1;
+[process_entry+9]=syscall;
+
+//Semget Call
+if(syscall==17) then
+    alias resource_table R5;
+    resource_table=([process_entry+11]+1)*512-16;
+    alias i R6;
+    i=0;
+    while([resource_table+2*i]!=-1) do
+        i=i+1;
+    endwhile;
+    if(i==16)   then
+        [[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=-1;
+        SP=[process_entry+13];
+        [process_entry+9]=0;
+        ireturn;
+    endif;
+    [resource_table+2*i]=1;
+    multipush(R1,R2,R3,R4,R5,R6);
+    R1=6;
+    R2=currPID;
+    call MOD_0;
+    multipop(R1,R2,R3,R4,R5,R6);
+    if(R0 == -1) then
+		[[PTBR + 2*(userSP-1)/512]*512 + (userSP-1)%512] = -2;
+		SP = [process_entry + 13];
+		[process_entry + 9] = 0;
+		ireturn;
+	endif;
+    [resource_table+2*i+1]=R0;
+
+    [[PTBR + 2*(userSP-1)/512]*512 + (userSP-1)%512] = i;
+    SP=[process_entry+13];
+    [process_entry+9]=0;
+    ireturn;
+endif;
+
+//Semrelease call
+
+if(syscall==18) then
+    alias semid R5;
+    semid=[[PTBR+2*(userSP-4)/512]*512+(userSP-4)%512];
+
+    alias resource_table R6;
+
+    resource_table=([process_entry+11])*512+RESOURCE_TABLE_OFFSET;
+
+    if(semid<0||semid>7||[resource_table+2*semid]!=1)   then
+        SP=[process_entry+13];
+        [process_entry+9]=0;
+        [[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=-1;
+        ireturn;
+    endif;
+
+    multipush(R1,R2,R3,R4,R5,R6);
+    R1=7;
+    R2=[resource_table+2*semid+1];
+    R3=currPID;
+    call MOD_0;
+    multipop(R1,R2,R3,R4,R5,R6);
+
+    [resource_table+2*semid]=-1;
+    [resource_table+2*semid+1]=-1;
+    [[PTBR + 2*(userSP-1)/512]*512 + (userSP-1)%512] = 0;
+    SP=[process_entry+13];
+    [process_entry+9]=0;
+    ireturn;
+endif;
